@@ -1,4 +1,4 @@
-import Random: default_rng
+import Random: default_rng, MersenneTwister
 
 @testset "umap tests" begin
 
@@ -160,6 +160,21 @@ import Random: default_rng
             @test length(embedding[i]) == length(actual[i])
         end
         @test isapprox(embedding, actual, atol=1e-2)
+    end
+
+    @testset "rng test" begin
+        rng = MersenneTwister(1234)
+        rng2 = copy(rng)
+
+        X = rand(5, 30)
+        model = UMAP_(rng, X, n_neighbors=5, n_epochs=5)
+        model2 = UMAP_(rng2, X, n_neighbors=5, n_epochs=5)
+        @test model.embedding == model2.embedding
+
+        Y = rand(5, 10)
+        embedding = transform(rng, model, Y, n_epochs=5, n_neighbors=5)
+        embedding2 = transform(rng2, model2, Y, n_epochs=5, n_neighbors=5)
+        @test embedding == embedding2
     end
 
     @testset "umap transform" begin
