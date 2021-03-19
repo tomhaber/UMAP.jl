@@ -1,35 +1,35 @@
 # initializing and optimizing embeddings
 
-function initialize_embedding(graph::AbstractMatrix{T}, n_components, ::Val{:spectral}) where {T}
+function initialize_embedding(rng::AbstractRNG, graph::AbstractMatrix{T}, n_components, ::Val{:spectral}) where {T}
     local embed
     try
         embed = spectral_layout(graph, n_components)
         # expand
         expansion = 10 / maximum(embed)
-        embed .= (embed .* expansion) .+ (1//10000) .* randn.(T)
+        embed .= (embed .* expansion) .+ (1//10000) .* randn.(rng, T)
         embed = collect(eachcol(embed))
     catch e
         @info "$e\nError encountered in spectral_layout; defaulting to random layout"
-        embed = initialize_embedding(graph, n_components, Val(:random))
+        embed = initialize_embedding(rng, graph, n_components, Val(:random))
     end
     return embed
 end
 
-function initialize_embedding(graph::AbstractMatrix{T}, n_components, ::Val{:random}) where {T}
-    return [20 .* rand(T, n_components) .- 10 for _ in 1:size(graph, 1)]
+function initialize_embedding(rng::AbstractRNG, graph::AbstractMatrix{T}, n_components, ::Val{:random}) where {T}
+    return [20 .* rand(rng, T, n_components) .- 10 for _ in 1:size(graph, 1)]
 end
 
 """
-    initialize_embedding(graph::AbstractMatrix{<:Real}, ref_embedding::AbstractMatrix{T<:AbstractFloat}) -> embedding
+    initialize_embedding(rng::AbstractRNG, graph::AbstractMatrix{<:Real}, ref_embedding::AbstractMatrix{T<:AbstractFloat}) -> embedding
 
 Initialize an embedding of points corresponding to the columns of the `graph`, by taking weighted means of
 the columns of `ref_embedding`, where weights are values from the rows of the `graph`.
 
 The resulting embedding will have shape `(size(ref_embedding, 1), size(graph, 2))`, where `size(ref_embedding, 1)`
-is the number of components (dimensions) of the `reference embedding`, and `size(graph, 2)` is the number of 
+is the number of components (dimensions) of the `reference embedding`, and `size(graph, 2)` is the number of
 samples in the resulting embedding. Its elements will have type T.
 """
-function initialize_embedding(graph::AbstractMatrix{<:Real}, ref_embedding::AbstractMatrix{T})::Vector{Vector{T}} where {T<:AbstractFloat}
+function initialize_embedding(::AbstractRNG, graph::AbstractMatrix{<:Real}, ref_embedding::AbstractMatrix{T})::Vector{Vector{T}} where {T<:AbstractFloat}
     embed = (ref_embedding * graph) ./ (sum(graph, dims=1) .+ eps(T))
     return Vector{T}[eachcol(embed)...]
 end
@@ -61,7 +61,7 @@ function spectral_layout(graph::SparseMatrixCSC{T},
 end
 
 """
-    optimize_embedding(graph, query_embedding, ref_embedding, n_epochs, initial_alpha, min_dist, spread, gamma, neg_sample_rate, _a=nothing, _b=nothing; move_ref=false) -> embedding
+    optimize_embedding(rng, raph, query_embedding, ref_embedding, n_epochs, initial_alpha, min_dist, spread, gamma, neg_sample_rate, _a=nothing, _b=nothing; move_ref=false) -> embedding
 
 Optimize an embedding by minimizing the fuzzy set cross entropy between the high and low dimensional simplicial sets using stochastic gradient descent.
 Optimize "query" samples with respect to "reference" samples.
@@ -80,7 +80,8 @@ Optimize "query" samples with respect to "reference" samples.
 # Keyword Arguments
 - `move_ref::Bool = false`: if true, also improve the embeddings in `ref_embedding`, else fix them and only improve embeddings in `query_embedding`.
 """
-function optimize_embedding(graph,
+function optimize_embedding(rng::AbstractRNG,
+                            graph,
                             query_embedding,
                             ref_embedding,
                             n_epochs,
@@ -101,7 +102,7 @@ function optimize_embedding(graph,
             for ind in nzrange(graph, i)
                 j = rowvals(graph)[ind]
                 p = nonzeros(graph)[ind]
-                if rand() <= p
+                if rand(rng) <= p
                     sdist = evaluate(SqEuclidean(), query_embedding[i], ref_embedding[j])
                     if sdist > 0
                         delta = (-2 * a * b * sdist^(b-1))/(1 + a*sdist^b)
@@ -117,7 +118,7 @@ function optimize_embedding(graph,
                     end
 
                     for _ in 1:neg_sample_rate
-                        k = rand(eachindex(ref_embedding))
+                        k = rand(rng, eachindex(ref_embedding))
                         if i == k && self_reference
                             continue
                         end

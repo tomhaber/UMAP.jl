@@ -1,3 +1,4 @@
+import Random: default_rng
 
 @testset "umap tests" begin
 
@@ -108,7 +109,7 @@
             old_ref_embedding = deepcopy(ref_embedding)
             query_embedding = rand(2, size(graph, 2))
             query_embedding = [query_embedding[:, i] for i in 1:size(query_embedding, 2)]
-            res_embedding = optimize_embedding(graph, query_embedding, ref_embedding, n_epochs, initial_alpha, 
+            res_embedding = optimize_embedding(default_rng(), graph, query_embedding, ref_embedding, n_epochs, initial_alpha,
                                                min_dist, spread, gamma, neg_sample_rate, move_ref=false)
             @test res_embedding isa Array{Array{Float64, 1}, 1}
             @test length(res_embedding) == length(query_embedding)
@@ -138,7 +139,7 @@
                                 0 2 -1]
         actual = [[9, 1], [8, 2], [3, -6], [3, -6]] ./10
 
-        embedding = initialize_embedding(graph, ref_embedding)
+        embedding = initialize_embedding(default_rng(), graph, ref_embedding)
         @test embedding isa AbstractVector{<:AbstractVector{Float64}}
         @test length(embedding) == length(actual)
         for i in 1:length(embedding)
@@ -152,7 +153,7 @@
                                 0 2 -1]
         actual = Vector{Float16}[[9, 1], [0, 0]] ./10
 
-        embedding = initialize_embedding(graph, ref_embedding)
+        embedding = initialize_embedding(default_rng(), graph, ref_embedding)
         @test embedding isa AbstractVector{<:AbstractVector{Float16}}
         @test length(embedding) == length(actual)
         for i in 1:length(embedding)
@@ -176,7 +177,7 @@
             model = UMAP_(model.graph, model.embedding, rand(5, 9), model.knns, model.dists)
             @test_throws ArgumentError transform(model, query; n_neighbors=3) # data size error
         end
-        
+
         @testset "transform test" begin
             data = rand(5, 30)
             model = UMAP_(data, 2, n_neighbors=2, n_epochs=1)

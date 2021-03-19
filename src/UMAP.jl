@@ -7,6 +7,8 @@ using LsqFit: curve_fit
 using NearestNeighborDescent
 using SparseArrays
 
+import Random: AbstractRNG, default_rng
+
 include("utils.jl")
 include("embeddings.jl")
 include("umap_.jl")

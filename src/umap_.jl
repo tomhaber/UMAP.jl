@@ -48,7 +48,7 @@ end
 """
     UMAP_(X::AbstractMatrix[, n_components=2]; <kwargs>) -> UMAP_ object
 
-Create a model representing the embedding of data `X` into `n_components`-dimensional space. 
+Create a model representing the embedding of data `X` into `n_components`-dimensional space.
 The returned model has the following fields:
 
 - `graph`: the graph representing the fuzzy simplicial set of the manifold of `X`.
@@ -74,7 +74,41 @@ The returned model has the following fields:
 - `a = nothing`: this controls the embedding. By default, this is determined automatically by `min_dist` and `spread`.
 - `b = nothing`: this controls the embedding. By default, this is determined automatically by `min_dist` and `spread`.
 """
-function UMAP_(X::AbstractMatrix{S},
+function UMAP_(X::AbstractMatrix{S}, n_components::Integer = 2; kw...) where {S <: Real}
+    UMAP_(default_rng(), X, n_components; kw...)
+end
+
+"""
+    UMAP_(rng::AbstractRNG, X::AbstractMatrix[, n_components=2]; <kwargs>) -> UMAP_ object
+
+Create a model representing the embedding of data `X` into `n_components`-dimensional space.
+The returned model has the following fields:
+
+- `graph`: the graph representing the fuzzy simplicial set of the manifold of `X`.
+- `embedding`: the `n-component`-dimensional embedding of the data `X`.
+- `data`: a reference to the input data `X`.
+- `knns`: a matrix of indices of `X` representing each point's nearest neighbors according to `metric`.
+          `knns[j, i]` is the index of point i's jth nearest neighbor.
+- `dists`: the respective distances of the above neighbors.
+           `dists[j, i]` is the distance of point i's jth nearest neighbor.
+
+# Keyword Arguments
+- `n_neighbors::Integer = 15`: the number of neighbors to consider as locally connected. Larger values capture more global structure in the data, while small values capture more local structure.
+- `metric::{SemiMetric, Symbol} = Euclidean()`: the metric to calculate distance in the input space. It is also possible to pass `metric = :precomputed` to treat `X` like a precomputed distance matrix.
+- `n_epochs::Integer = 300`: the number of training epochs for embedding optimization
+- `learning_rate::Real = 1`: the initial learning rate during optimization
+- `init::Symbol = :spectral`: how to initialize the output embedding; valid options are `:spectral` and `:random`
+- `min_dist::Real = 0.1`: the minimum spacing of points in the output embedding
+- `spread::Real = 1`: the effective scale of embedded points. Determines how clustered embedded points are in combination with `min_dist`.
+- `set_operation_ratio::Real = 1`: interpolates between fuzzy set union and fuzzy set intersection when constructing the UMAP graph (global fuzzy simplicial set). The value of this parameter should be between 1.0 and 0.0: 1.0 indicates pure fuzzy union, while 0.0 indicates pure fuzzy intersection.
+- `local_connectivity::Integer = 1`: the number of nearest neighbors that should be assumed to be locally connected. The higher this value, the more connected the manifold becomes. This should not be set higher than the intrinsic dimension of the manifold.
+- `repulsion_strength::Real = 1`: the weighting of negative samples during the optimization process.
+- `neg_sample_rate::Integer = 5`: the number of negative samples to select for each positive sample. Higher values will increase computational cost but result in slightly more accuracy.
+- `a = nothing`: this controls the embedding. By default, this is determined automatically by `min_dist` and `spread`.
+- `b = nothing`: this controls the embedding. By default, this is determined automatically by `min_dist` and `spread`.
+"""
+function UMAP_(rng::AbstractRNG,
+               X::AbstractMatrix{S},
                n_components::Integer = 2;
                n_neighbors::Integer = 15,
                metric::Union{SemiMetric, Symbol} = Euclidean(),
@@ -104,9 +138,9 @@ function UMAP_(X::AbstractMatrix{S},
     knns, dists = knn_search(X, n_neighbors, metric)
     graph = fuzzy_simplicial_set(knns, dists, n_neighbors, size(X, 2), local_connectivity, set_operation_ratio)
 
-    embedding = initialize_embedding(graph, n_components, Val(init))
+    embedding = initialize_embedding(rng, graph, n_components, Val(init))
 
-    embedding = optimize_embedding(graph, embedding, embedding, n_epochs, learning_rate, min_dist, spread, repulsion_strength, neg_sample_rate, move_ref=true)
+    embedding = optimize_embedding(rng, graph, embedding, embedding, n_epochs, learning_rate, min_dist, spread, repulsion_strength, neg_sample_rate, move_ref=true)
     # TODO: if target variable y is passed, then construct target graph
     #       in the same manner and do a fuzzy simpl set intersection
 
@@ -136,7 +170,35 @@ and optimizing cross entropy according to membership strengths according to thes
 - `a = nothing`: this controls the embedding. By default, this is determined automatically by `min_dist` and `spread`.
 - `b = nothing`: this controls the embedding. By default, this is determined automatically by `min_dist` and `spread`.
 """
-function transform(model::UMAP_,
+function transform(model::UMAP_, Q::AbstractMatrix{S}; kw...) where {S <: Real}
+    transform(default_rng(), model, Q; kw...)
+end
+
+"""
+    transform(rng::AbstractRNG, model::UMAP_, Q::AbstractMatrix; <kwargs>) -> embedding
+
+Use the given model to embed new points into an existing embedding. `Q` is a matrix of some number of points (columns)
+in the same space as `model.data`. The returned embedding is the embedding of these points in n-dimensional space, where
+n is the dimensionality of `model.embedding`. This embedding is created by finding neighbors of `Q` in `model.embedding`
+and optimizing cross entropy according to membership strengths according to these neighbors.
+
+# Keyword Arguments
+- `n_neighbors::Integer = 15`: the number of neighbors to consider as locally connected. Larger values capture more global structure in the data, while small values capture more local structure.
+- `metric::{SemiMetric, Symbol} = Euclidean()`: the metric to calculate distance in the input space. It is also possible to pass `metric = :precomputed` to treat `X` like a precomputed distance matrix.
+- `n_epochs::Integer = 300`: the number of training epochs for embedding optimization
+- `learning_rate::Real = 1`: the initial learning rate during optimization
+- `init::Symbol = :spectral`: how to initialize the output embedding; valid options are `:spectral` and `:random`
+- `min_dist::Real = 0.1`: the minimum spacing of points in the output embedding
+- `spread::Real = 1`: the effective scale of embedded points. Determines how clustered embedded points are in combination with `min_dist`.
+- `set_operation_ratio::Real = 1`: interpolates between fuzzy set union and fuzzy set intersection when constructing the UMAP graph (global fuzzy simplicial set). The value of this parameter should be between 1.0 and 0.0: 1.0 indicates pure fuzzy union, while 0.0 indicates pure fuzzy intersection.
+- `local_connectivity::Integer = 1`: the number of nearest neighbors that should be assumed to be locally connected. The higher this value, the more connected the manifold becomes. This should not be set higher than the intrinsic dimension of the manifold.
+- `repulsion_strength::Real = 1`: the weighting of negative samples during the optimization process.
+- `neg_sample_rate::Integer = 5`: the number of negative samples to select for each positive sample. Higher values will increase computational cost but result in slightly more accuracy.
+- `a = nothing`: this controls the embedding. By default, this is determined automatically by `min_dist` and `spread`.
+- `b = nothing`: this controls the embedding. By default, this is determined automatically by `min_dist` and `spread`.
+"""
+function transform(rng::AbstractRNG,
+                   model::UMAP_,
                    Q::AbstractMatrix{S};
                    n_neighbors::Integer = 15,
                    metric::Union{SemiMetric, Symbol} = Euclidean(),
@@ -166,16 +228,16 @@ function transform(model::UMAP_,
     knns, dists = knn_search(model.data, Q, n_neighbors, metric, model.knns, model.dists)
     graph = fuzzy_simplicial_set(knns, dists, n_neighbors, size(model.data, 2), local_connectivity, set_operation_ratio, false)
 
-    embedding = initialize_embedding(graph, model.embedding)
+    embedding = initialize_embedding(rng, graph, model.embedding)
     ref_embedding = collect(eachcol(model.embedding))
-    embedding = optimize_embedding(graph, embedding, ref_embedding, n_epochs, learning_rate, min_dist, spread, repulsion_strength, neg_sample_rate, a, b, move_ref=false)
+    embedding = optimize_embedding(rng, graph, embedding, ref_embedding, n_epochs, learning_rate, min_dist, spread, repulsion_strength, neg_sample_rate, a, b, move_ref=false)
 
     return reduce(hcat, embedding)
 end
 
 
 """
-    fuzzy_simplicial_set(knns, dists, n_neighbors, n_points, local_connectivity, set_op_ratio, apply_fuzzy_combine=true) -> membership_graph::SparseMatrixCSC, 
+    fuzzy_simplicial_set(knns, dists, n_neighbors, n_points, local_connectivity, set_op_ratio, apply_fuzzy_combine=true) -> membership_graph::SparseMatrixCSC,
 
 Construct the local fuzzy simplicial sets of each point represented by its distances
 to its `n_neighbors` nearest neighbors, stored in `knns` and `dists`, normalizing the distances
