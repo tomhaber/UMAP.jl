@@ -25,7 +25,7 @@ Initialize an embedding of points corresponding to the columns of the `graph`, b
 the columns of `ref_embedding`, where weights are values from the rows of the `graph`.
 
 The resulting embedding will have shape `(size(ref_embedding, 1), size(graph, 2))`, where `size(ref_embedding, 1)`
-is the number of components (dimensions) of the `reference embedding`, and `size(graph, 2)` is the number of 
+is the number of components (dimensions) of the `reference embedding`, and `size(graph, 2)` is the number of
 samples in the resulting embedding. Its elements will have type T.
 """
 function initialize_embedding(graph::AbstractMatrix{<:Real}, ref_embedding::AbstractMatrix{T})::Matrix{T} where {T<:AbstractFloat}
@@ -93,6 +93,9 @@ function optimize_embedding(graph::SparseMatrixCSC{T},
     a, b = fit_ab(convert(S,min_dist), convert(S, spread), _a, _b)
     self_reference = query_embedding === ref_embedding
 
+    a_2_b = -2 * a * b
+    gamma_2_b = 2 * gamma * b
+
     alpha = initial_alpha
     for e in 1:n_epochs
         @inbounds for i in 1:size(graph, 2)
@@ -106,7 +109,7 @@ function optimize_embedding(graph::SparseMatrixCSC{T},
 
                     sdist = evaluate(SqEuclidean(), xi, xj)
                     sdist = max(sdist, eps(S))
-                    delta = (-2 * a * b * sdist^b)/(sdist*(1 + a*sdist^b))
+                    delta = (a_2_b * sdist^b)/(sdist*(1 + a*sdist^b))
 
                     @simd for d in eachindex(xi)
                         grad = clamp(delta * (xi[d] - xj[d]), -4, 4)
@@ -125,14 +128,10 @@ function optimize_embedding(graph::SparseMatrixCSC{T},
 
                         sdist = evaluate(SqEuclidean(), xi, xk)
                         sdist = max(sdist, eps(S))
-                        delta = (2 * gamma * b) / ((S(1//1000) + sdist)*(1 + a*sdist^b))
+                        delta = gamma_2_b / ((S(1//1000) + sdist)*(1 + a*sdist^b))
 
                         @simd for d in eachindex(xi)
-                            if delta > 0
-                                grad = clamp(delta * (xi[d] - xk[d]), -4, 4)
-                            else
-                                grad = 4
-                            end
+                            grad = clamp(delta * (xi[d] - xk[d]), -4, 4)
                             xi[d] += alpha * grad
                         end
                     end
