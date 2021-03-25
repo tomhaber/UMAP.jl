@@ -1,3 +1,4 @@
+import Random: default_rng, MersenneTwister
 
 @testset "umap tests" begin
 
@@ -107,7 +108,7 @@
             ref_embedding = rand(2, size(graph, 1))
             old_ref_embedding = deepcopy(ref_embedding)
             query_embedding = rand(2, size(graph, 2))
-            res_embedding = optimize_embedding(graph, query_embedding, ref_embedding, n_epochs, initial_alpha,
+            res_embedding = optimize_embedding(default_rng(), graph, query_embedding, ref_embedding, n_epochs, initial_alpha,
                                                min_dist, spread, gamma, neg_sample_rate, move_ref=false)
             @test res_embedding isa Array{Float64, 2}
             @test size(res_embedding) == size(query_embedding)
@@ -134,7 +135,7 @@
                                 0 2 -1]
         actual = Float64[9 1; 8 2; 3 -6; 3 -6]' ./10
 
-        embedding = initialize_embedding(graph, ref_embedding)
+        embedding = initialize_embedding(default_rng(), graph, ref_embedding)
         @test embedding isa AbstractMatrix{Float64}
         @test size(embedding) == size(actual)
         @test isapprox(embedding, actual, atol=1e-8)
@@ -145,10 +146,25 @@
                                 0 2 -1]
         actual = Float16[9 1; 0 0]' ./10
 
-        embedding = initialize_embedding(graph, ref_embedding)
+        embedding = initialize_embedding(default_rng(), graph, ref_embedding)
         @test embedding isa AbstractMatrix{Float16}
         @test size(embedding) == size(actual)
         @test isapprox(embedding, actual, atol=1e-2)
+    end
+
+    @testset "rng test" begin
+        rng = MersenneTwister(1234)
+        rng2 = copy(rng)
+
+        X = rand(5, 30)
+        model = UMAP_(rng, X, n_neighbors=5, n_epochs=5)
+        model2 = UMAP_(rng2, X, n_neighbors=5, n_epochs=5)
+        @test model.embedding == model2.embedding
+
+        Y = rand(5, 10)
+        embedding = transform(rng, model, Y, n_epochs=5, n_neighbors=5)
+        embedding2 = transform(rng2, model2, Y, n_epochs=5, n_neighbors=5)
+        @test embedding == embedding2
     end
 
     @testset "umap transform" begin

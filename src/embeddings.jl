@@ -1,25 +1,25 @@
 # initializing and optimizing embeddings
 
-function initialize_embedding(graph::AbstractMatrix{T}, n_components, ::Val{:spectral}) where {T}
+function initialize_embedding(rng::AbstractRNG, graph::AbstractMatrix{T}, n_components, ::Val{:spectral}) where {T}
     local embed
     try
         embed = spectral_layout(graph, n_components)
         # expand
         expansion = 10 / maximum(embed)
-        embed .= (embed .* expansion) .+ (1//10000) .* randn.(T)
+        embed .= (embed .* expansion) .+ (1//10000) .* randn.(rng, T)
     catch e
         @info "$e\nError encountered in spectral_layout; defaulting to random layout"
-        embed = initialize_embedding(graph, n_components, Val(:random))
+        embed = initialize_embedding(rng, graph, n_components, Val(:random))
     end
     return embed
 end
 
-function initialize_embedding(graph::AbstractMatrix{T}, n_components, ::Val{:random}) where {T}
-    20 .* rand(T, (n_components, size(graph, 1))) .- 10
+function initialize_embedding(rng::AbstractRNG, graph::AbstractMatrix{T}, n_components, ::Val{:random}) where {T}
+    20 .* rand(rng, T, (n_components, size(graph, 1))) .- 10
 end
 
 """
-    initialize_embedding(graph::AbstractMatrix{<:Real}, ref_embedding::AbstractMatrix{T<:AbstractFloat}) -> embedding
+    initialize_embedding(rng::AbstractRNG, graph::AbstractMatrix{<:Real}, ref_embedding::AbstractMatrix{T<:AbstractFloat}) -> embedding
 
 Initialize an embedding of points corresponding to the columns of the `graph`, by taking weighted means of
 the columns of `ref_embedding`, where weights are values from the rows of the `graph`.
@@ -28,7 +28,7 @@ The resulting embedding will have shape `(size(ref_embedding, 1), size(graph, 2)
 is the number of components (dimensions) of the `reference embedding`, and `size(graph, 2)` is the number of
 samples in the resulting embedding. Its elements will have type T.
 """
-function initialize_embedding(graph::AbstractMatrix{<:Real}, ref_embedding::AbstractMatrix{T})::Matrix{T} where {T<:AbstractFloat}
+function initialize_embedding(::AbstractRNG, graph::AbstractMatrix{<:Real}, ref_embedding::AbstractMatrix{T})::Matrix{T} where {T<:AbstractFloat}
     (ref_embedding * graph) ./ (sum(graph, dims=1) .+ eps(T))
 end
 
@@ -59,7 +59,7 @@ function spectral_layout(graph::SparseMatrixCSC{T},
 end
 
 """
-    optimize_embedding(graph, query_embedding, ref_embedding, n_epochs, initial_alpha, min_dist, spread, gamma, neg_sample_rate, _a=nothing, _b=nothing; move_ref=false) -> embedding
+    optimize_embedding(rng, graph, query_embedding, ref_embedding, n_epochs, initial_alpha, min_dist, spread, gamma, neg_sample_rate, _a=nothing, _b=nothing; move_ref=false) -> embedding
 
 Optimize an embedding by minimizing the fuzzy set cross entropy between the high and low dimensional simplicial sets using stochastic gradient descent.
 Optimize "query" samples with respect to "reference" samples.
@@ -78,7 +78,8 @@ Optimize "query" samples with respect to "reference" samples.
 # Keyword Arguments
 - `move_ref::Bool = false`: if true, also improve the embeddings in `ref_embedding`, else fix them and only improve embeddings in `query_embedding`.
 """
-function optimize_embedding(graph::SparseMatrixCSC{T},
+function optimize_embedding(rng::AbstractRNG,
+                            graph::SparseMatrixCSC{T},
                             query_embedding::AbstractMatrix{S},
                             ref_embedding::AbstractMatrix{S},
                             n_epochs::Integer,
@@ -103,7 +104,7 @@ function optimize_embedding(graph::SparseMatrixCSC{T},
                 j = rowvals(graph)[ind]
                 p = nonzeros(graph)[ind]
 
-                if rand() <= p
+                if rand(rng) <= p
                     xi = view(query_embedding, :, i)
                     xj = view(ref_embedding, :, j)
 
@@ -120,7 +121,7 @@ function optimize_embedding(graph::SparseMatrixCSC{T},
                     end
 
                     for _ in 1:neg_sample_rate
-                        k = rand(1:size(ref_embedding, 2))
+                        k = rand(rng, 1:size(ref_embedding, 2))
                         if i == k && self_reference
                             continue
                         end
